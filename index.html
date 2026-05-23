@@ -232,6 +232,7 @@ function buildNav(){
     tabs.push({id:'cxp',label:'CXP',icon:'M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z'});
     tabs.push({id:'caja',label:'Caja',icon:'M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z'});
     tabs.push({id:'dashboard',label:'Dash',icon:'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z'});
+    tabs.push({id:'consumo',label:'Consumo',icon:'M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5c-.49 0-.96.06-1.41.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z'});
     if(U.rol==='admin') tabs.push({id:'usuarios',label:'Usuarios',icon:'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'});
   }
   tabs.push({id:'ayuda',label:'Ayuda',icon:'M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z'});
@@ -260,6 +261,7 @@ function renderCurrentTab(){
   else if(id==='cxp')renderCXP();
   else if(id==='caja')renderCaja();
   else if(id==='dashboard')renderDashboard();
+  else if(id==='consumo')renderConsumo();
   else if(id==='usuarios')renderUsuarios();
   else if(id==='ayuda')renderAyuda();
 }
@@ -1637,6 +1639,121 @@ function buildDailyDetail(ventas){
     }).join('')+'</div>';
 }
 
+// ===================== CONSUMO POR CLIENTE =====================
+// Persistencia local de ratios producto -> botellones/regalia
+function loadConsumoRatios(){
+  try{return JSON.parse(localStorage.getItem('consumo_ratios')||'{}');}catch{return{};}
+}
+function saveConsumoRatios(r){try{localStorage.setItem('consumo_ratios',JSON.stringify(r));}catch{}}
+
+async function renderConsumo(){
+  const c=g('content');
+  c.innerHTML=`
+    <div class="stitle">Consumo por cliente</div>
+    <div class="subtle">Resumen de compras por producto en un rango de fechas. Configura cuántos productos equivalen a 1 regalía para ver cuántas ha ganado el cliente.</div>
+    <div class="card">
+      <div class="grid2"><div class="field"><label>Desde</label><input type="date" id="con-d" value="${hoy().slice(0,8)+'01'}"></div>
+      <div class="field"><label>Hasta</label><input type="date" id="con-h" value="${hoy()}"></div></div>
+      <div class="field"><label>Cliente</label><select id="con-cli"><option value="">Todos los clientes</option>${clientOpts()}</select></div>
+      <button class="btn-sm btn-p" id="con-go" style="width:auto">Generar reporte</button>
+    </div>
+    <div id="con-ratios"></div>
+    <div id="con-body"></div>
+  `;
+  // Render ratios editor
+  renderRatiosEditor();
+  g('con-go').onclick=loadConsumo;
+  loadConsumo();
+}
+
+function renderRatiosEditor(){
+  let box=g('con-ratios');if(!box)return;
+  let ratios=loadConsumoRatios();
+  let prods=D.productos.filter(p=>p.activo!==false);
+  box.innerHTML=`<div class="card"><h4 style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--pd)">Reglas de regalías (cuantas unidades por 1 regalía)</h4>
+    <div style="font-size:11px;color:var(--g400);margin-bottom:8px">Si dejas en 0, no se calculan regalías para ese producto.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${prods.map(p=>`<div style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="flex:1">${p.nombre}:</span><input type="number" min="0" step="1" class="ratio-input" data-pid="${p.id}" value="${ratios[p.id]||0}" style="width:70px;padding:6px 8px;border:1.5px solid var(--g200);border-radius:6px;font-size:13px"></div>`).join('')}</div>
+    <button class="btn-sm btn-p" id="con-save-ratios" style="width:auto;margin-top:10px">Guardar reglas</button></div>`;
+  g('con-save-ratios').onclick=()=>{
+    let r={};
+    box.querySelectorAll('.ratio-input').forEach(inp=>{
+      let val=parseNum(inp.value);
+      if(val>0)r[inp.dataset.pid]=val;
+    });
+    saveConsumoRatios(r);
+    loadConsumo();
+    alert('Reglas guardadas');
+  };
+}
+
+async function loadConsumo(){
+  let el=g('con-body');if(!el)return;
+  el.innerHTML='<div class="loading"><div class="spin"></div></div>';
+  let desde=g('con-d').value,hasta=g('con-h').value,cliId=g('con-cli').value;
+  let ratios=loadConsumoRatios();
+  // Cargar ventas con paginacion
+  let q=SB.from('ventas_detalle').select('*').eq('eliminada',false).gte('fecha',desde).lte('fecha',hasta);
+  if(cliId)q=q.eq('cliente_id',cliId);
+  let rows=await fetchAll(q);
+  if(!rows.length){el.innerHTML='<p style="text-align:center;color:var(--g400);padding:20px;font-size:13px">Sin ventas en el periodo seleccionado</p>';return;}
+  // Cargar pagos del rango para sacar regalias adicionales (las que se aplicaron como pago)
+  let qp=SB.from('pagos').select('*').eq('anulado',false).gte('fecha',desde).lte('fecha',hasta);
+  if(cliId)qp=qp.eq('cliente_id',cliId);
+  let pagos=await fetchAll(qp);
+  // Resumir por cliente y producto
+  let porCli={};
+  rows.forEach(r=>{
+    let cli=r.cliente_id;
+    if(!porCli[cli])porCli[cli]={nombre:r.cliente_nombre,total:0,productos:{},regaliasDinero:0};
+    let prod=D.productos.find(p=>p.id===r.producto_id);
+    let pname=prod?prod.nombre:r.producto_id;
+    if(!porCli[cli].productos[r.producto_id])porCli[cli].productos[r.producto_id]={nombre:pname,compradas:0,regaliasEntregadas:0,total:0};
+    let q=parseNum(r.cantidad);
+    let isRegalia=r.forma_pago==='Regalías';
+    if(isRegalia){
+      porCli[cli].productos[r.producto_id].regaliasEntregadas+=q;
+    }else{
+      porCli[cli].productos[r.producto_id].compradas+=q;
+    }
+    porCli[cli].productos[r.producto_id].total+=parseNum(r.total);
+    porCli[cli].total+=parseNum(r.total);
+  });
+  // Sumar regalias en dinero de los pagos (informativo)
+  pagos.forEach(p=>{
+    let r=parseNum(p.regalias);
+    if(r>0&&porCli[p.cliente_id])porCli[p.cliente_id].regaliasDinero+=r;
+  });
+
+  let list=Object.entries(porCli).sort((a,b)=>b[1].total-a[1].total);
+  let totalGral=list.reduce((s,x)=>s+x[1].total,0);
+
+  el.innerHTML=`<div class="tbox"><span class="tbox-l">${list.length} cliente(s) · Total facturado</span><span class="tbox-v">${fmt(totalGral)}</span></div>`+
+    list.map(([id,d])=>{
+      let prods=Object.values(d.productos).sort((a,b)=>{
+        let aB=a.nombre.toLowerCase().startsWith('botell');
+        let bB=b.nombre.toLowerCase().startsWith('botell');
+        if(aB&&!bB)return -1;if(!aB&&bB)return 1;
+        return a.nombre.localeCompare(b.nombre);
+      });
+      let prodsRows=prods.map(p=>{
+        let prodId=Object.keys(d.productos).find(k=>d.productos[k]===p);
+        let ratio=ratios[prodId]||0;
+        let isBot=p.nombre.toLowerCase().startsWith('botell');
+        let regaliasGanadas=ratio>0?Math.floor(p.compradas/ratio):0;
+        let saldo=regaliasGanadas-p.regaliasEntregadas;
+        let reglaInfo=ratio>0?`<span style="font-size:10px;color:var(--g400)"> (1 cada ${ratio})</span>`:'';
+        let regCol=ratio>0?`<div style="font-size:11px;text-align:right;line-height:1.4"><div>Ganadas: <strong>${regaliasGanadas}</strong> · Dadas: ${p.regaliasEntregadas}</div><div style="color:${saldo>0?'var(--green)':saldo<0?'var(--red)':'var(--g400)'};font-weight:700">${saldo>0?'Faltan '+saldo:saldo<0?'Excedido '+Math.abs(saldo):'Al día'}</div></div>`:(p.regaliasEntregadas>0?`<div style="font-size:11px;text-align:right;color:var(--g400)">Reg. dadas: ${p.regaliasEntregadas}</div>`:'');
+        return `<tr style="${isBot?'background:var(--pl)':''}"><td style="padding:6px;font-size:12px;${isBot?'font-weight:700;color:var(--pd)':''}">${p.nombre}${reglaInfo}</td><td style="padding:6px;text-align:right;font-size:12px;${isBot?'font-weight:700':''}">${Math.round(p.compradas*100)/100}</td><td style="padding:6px;text-align:right;font-size:12px">${fmt(p.total)}</td><td style="padding:6px;text-align:right">${regCol}</td></tr>`;
+      }).join('');
+      let regDin=d.regaliasDinero>0?` · Regalías en abonos: <strong>${fmt(d.regaliasDinero)}</strong>`:'';
+      return `<div class="card" style="padding:12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><h4 style="font-size:14px;color:var(--pd)">${d.nombre}</h4><span style="font-size:14px;font-weight:700">${fmt(d.total)}</span></div>
+        <table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:2px solid var(--g200)"><th style="text-align:left;padding:6px;font-size:11px;color:var(--g600)">Producto</th><th style="text-align:right;padding:6px;font-size:11px;color:var(--g600)">Cant.</th><th style="text-align:right;padding:6px;font-size:11px;color:var(--g600)">Facturado</th><th style="text-align:right;padding:6px;font-size:11px;color:var(--g600)">Regalías</th></tr></thead><tbody>${prodsRows}</tbody></table>
+        ${d.regaliasDinero>0?`<div style="font-size:11px;color:var(--g600);margin-top:6px;padding-top:6px;border-top:1px dashed var(--g200)">${regDin}</div>`:''}
+      </div>`;
+    }).join('');
+}
+
 // ===================== GESTION DE USUARIOS (solo admin) =====================
 async function renderUsuarios(){
   if(U.rol!=='admin'){g('content').innerHTML='<div class="loading">Sin acceso</div>';return;}
@@ -1859,14 +1976,26 @@ function renderAyuda(){
         <li><strong>Ventas netas</strong>: total de ventas menos regal\u00edas</li>
         <li><strong>Cobrado</strong>: dinero real recibido (sin incluir regal\u00edas)</li>
         <li>Top 5 clientes y productos</li>
-        <li>Detalle diario por cliente</li>
+        <li>Resumen por cliente con productos agrupados</li>
         ${U.rol==='admin'?'<li>Gastos, CXC, CXP, utilidad estimada</li>':''}
+      </ul>
+    </div>
+
+    <div class="card">
+      <h4 style="color:var(--pd);margin-bottom:8px">9. Consumo por cliente</h4>
+      <ul style="font-size:13px;color:var(--g600);padding-left:18px;line-height:1.8">
+        <li>Reporte detallado de consumo: filtra por rango de fechas y cliente (o todos)</li>
+        <li>Muestra cu\u00e1ntas unidades de cada producto compr\u00f3 cada cliente y cu\u00e1nto factur\u00f3</li>
+        <li><strong>C\u00e1lculo de regal\u00edas</strong>: configura en "Reglas de regal\u00edas" cu\u00e1ntas unidades de cada producto equivalen a 1 regal\u00eda (ej. 50 botellones = 1 regal\u00eda)</li>
+        <li>El sistema calcula cu\u00e1ntas regal\u00edas <strong>ganadas</strong> tiene el cliente, cu\u00e1ntas se le han <strong>entregado</strong> y si <strong>faltan o se exced\u00ed\u00f3</strong></li>
+        <li>Si dejas la regla en 0, no se calcula nada para ese producto</li>
+        <li>Las reglas se guardan en el navegador (cada dispositivo puede tener su configuraci\u00f3n)</li>
       </ul>
     </div>
 
     ${U.rol==='admin'?`
     <div class="card">
-      <h4 style="color:var(--pd);margin-bottom:8px">9. Usuarios (solo Admin)</h4>
+      <h4 style="color:var(--pd);margin-bottom:8px">10. Usuarios (solo Admin)</h4>
       <ul style="font-size:13px;color:var(--g600);padding-left:18px;line-height:1.8">
         <li>Agrega, edita y desactiva usuarios del sistema</li>
         <li>Puedes <strong>cambiar claves</strong> (PIN de 6 d\u00edgitos)</li>
