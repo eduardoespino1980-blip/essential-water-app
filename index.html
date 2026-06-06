@@ -1790,7 +1790,7 @@ function openUserModal(user){
   let html=`
     <div class="field"><label>Nombre</label><input type="text" id="mu-nom" value="${user?(user.nombre||'').replace(/"/g,'&quot;'):''}"></div>
     <div class="grid2">
-      <div class="field"><label>Usuario (login)</label><input type="text" id="mu-user" value="${user?(user.usuario||'').replace(/"/g,'&quot;'):''}" ${isNew?'':'readonly style="background:var(--g50)"'}></div>
+      <div class="field"><label>Usuario (login)</label><input type="text" id="mu-user" value="${user?(user.usuario||'').replace(/"/g,'&quot;'):''}"></div>
       <div class="field"><label>Clave (PIN)</label><input type="text" id="mu-pass" value="${user?(user.clave||'').replace(/"/g,'&quot;'):''}" maxlength="6"></div>
     </div>
     <div class="grid2">
@@ -1825,7 +1825,7 @@ function openUserModal(user){
         const{error}=await SB.from('empleados').insert({id,nombre,usuario,clave,rol,activo});
         if(error)throw error;
       }else{
-        const{error}=await SB.from('empleados').update({nombre,clave,rol,activo}).eq('id',user.id);
+        const{error}=await SB.from('empleados').update({nombre,usuario,clave,rol,activo}).eq('id',user.id);
         if(error)throw error;
       }
       closeModal();
