@@ -589,9 +589,7 @@ async function loadGastosList(){
 }
 
 function editGastoModal(eg){
-  let modal=g('modal-pago');
-  g('mpago-body').innerHTML=`
-    <h3 style="margin-bottom:14px">Editar gasto ${eg.id}</h3>
+  let html=`
     <div class="alert" id="aeg"></div>
     <div class="grid2"><div class="field"><label>Fecha</label><input type="date" id="eg-f" value="${eg.fecha}"></div>
     <div class="field"><label>Monto</label><input type="number" id="eg-m" step="0.01" value="${parseNum(eg.monto)}"></div></div>
@@ -600,11 +598,13 @@ function editGastoModal(eg){
     <div class="field"><label>Condici\u00f3n de pago</label><select id="eg-cond"><option ${eg.condicion_pago==='Contado'?'selected':''}>Contado</option><option ${eg.condicion_pago==='Cr\u00e9dito'?'selected':''}>Cr\u00e9dito</option></select></div>
     <div class="field"><label>Detalle</label><input type="text" id="eg-d" value="${(eg.detalle||'').replace(/"/g,'&quot;')}"></div>
     <div class="field"><label>Observaci\u00f3n</label><input type="text" id="eg-obs" value="${(eg.observacion||'').replace(/"/g,'&quot;')}"></div>
-    <button class="btn btn-p" id="btn-eg-save">Guardar cambios</button>
-    <button class="btn btn-gray" id="btn-eg-cancel" style="margin-top:8px">Cancelar</button>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-p" id="btn-eg-save" style="flex:1">Guardar cambios</button>
+      <button class="btn btn-gray" id="btn-eg-cancel" style="flex:1">Cancelar</button>
+    </div>
   `;
-  modal.classList.remove('hidden');
-  g('btn-eg-cancel').onclick=()=>modal.classList.add('hidden');
+  openModal('Editar gasto '+eg.id,html);
+  g('btn-eg-cancel').onclick=()=>closeModal();
   g('btn-eg-save').onclick=async()=>{
     let btn=g('btn-eg-save');if(!lockBtn(btn))return;
     try{
@@ -631,7 +631,7 @@ function editGastoModal(eg){
         proveedor_nombre:prov?prov.nombre:'',condicion_pago:cond,
         pago_inicial:pagoInicial,saldo
       }).eq('id',eg.id);
-      modal.classList.add('hidden');
+      closeModal();
       loadGastosList();
     }catch(ex){alert('Error: '+ex.message);}
     finally{unlockBtn(btn);}
@@ -1787,13 +1787,11 @@ async function renderUsuarios(){
 
 function openUserModal(user){
   let isNew=!user;
-  let modal=g('modal-pago');
-  g('mpago-body').innerHTML=`
-    <h3 style="margin-bottom:14px">${isNew?'Nuevo usuario':'Editar usuario'}</h3>
-    <div class="field"><label>Nombre</label><input type="text" id="mu-nom" value="${user?user.nombre:''}"></div>
+  let html=`
+    <div class="field"><label>Nombre</label><input type="text" id="mu-nom" value="${user?(user.nombre||'').replace(/"/g,'&quot;'):''}"></div>
     <div class="grid2">
-      <div class="field"><label>Usuario (login)</label><input type="text" id="mu-user" value="${user?user.usuario:''}" ${isNew?'':'readonly style="background:var(--g50)"'}></div>
-      <div class="field"><label>Clave (PIN)</label><input type="text" id="mu-pass" value="${user?user.clave:''}" maxlength="6"></div>
+      <div class="field"><label>Usuario (login)</label><input type="text" id="mu-user" value="${user?(user.usuario||'').replace(/"/g,'&quot;'):''}" ${isNew?'':'readonly style="background:var(--g50)"'}></div>
+      <div class="field"><label>Clave (PIN)</label><input type="text" id="mu-pass" value="${user?(user.clave||'').replace(/"/g,'&quot;'):''}" maxlength="6"></div>
     </div>
     <div class="grid2">
       <div class="field"><label>Rol</label><select id="mu-rol">
@@ -1806,11 +1804,13 @@ function openUserModal(user){
         <option value="false" ${user&&user.activo===false?'selected':''}>Inactivo</option>
       </select></div>
     </div>
-    <button class="btn btn-p" id="btn-save-user">Guardar</button>
-    <button class="btn btn-gray" id="btn-cancel-user" style="margin-top:8px">Cancelar</button>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-p" id="btn-save-user" style="flex:1">Guardar</button>
+      <button class="btn btn-gray" id="btn-cancel-user" style="flex:1">Cancelar</button>
+    </div>
   `;
-  modal.classList.remove('hidden');
-  g('btn-cancel-user').onclick=()=>modal.classList.add('hidden');
+  openModal(isNew?'Nuevo usuario':'Editar usuario',html);
+  g('btn-cancel-user').onclick=()=>closeModal();
   g('btn-save-user').onclick=async()=>{
     let btn=g('btn-save-user');if(!lockBtn(btn))return;
     let nombre=g('mu-nom').value.trim();
@@ -1828,7 +1828,7 @@ function openUserModal(user){
         const{error}=await SB.from('empleados').update({nombre,clave,rol,activo}).eq('id',user.id);
         if(error)throw error;
       }
-      modal.classList.add('hidden');
+      closeModal();
       renderUsuarios();
     }catch(ex){
       alert('Error: '+(ex.message||ex.details||'No se pudo guardar'));
