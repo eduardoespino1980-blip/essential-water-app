@@ -1765,24 +1765,34 @@ async function renderUsuarios(){
     <div class="stitle">Gesti\u00f3n de usuarios</div>
     <div class="subtle">Solo el administrador puede agregar, editar claves y desactivar usuarios.</div>
     <div class="alert" id="au"></div>
-    <button class="btn-sm btn-p" id="btn-new-user" style="margin-bottom:14px">+ Nuevo usuario</button>
-    <div id="users-list">${users.map(u=>`
-      <div class="litem">
-        <div class="litem-info">
-          <h4>${u.nombre} ${u.activo===false?'<span class="badge b-gray">Inactivo</span>':''}</h4>
-          <p>Usuario: <strong>${u.usuario}</strong> \u00b7 Rol: <strong>${u.rol}</strong> \u00b7 Clave: <strong>${u.clave}</strong></p>
-        </div>
-        <div class="litem-r">
-          <button class="btn-sm btn-gray edit-user" data-id="${u.id}" style="margin:2px">Editar</button>
-        </div>
-      </div>`).join('')}
-      ${!users.length?'<div class="loading">No hay usuarios registrados</div>':''}
+    <div class="card">
+      <div class="field"><label>Selecciona un usuario para editar</label>
+        <select id="user-select">
+          <option value="">\u2014 Selecciona un usuario \u2014</option>
+          ${users.map(u=>`<option value="${u.id}">${u.nombre} \u00b7 ${u.usuario} \u00b7 ${u.rol}${u.activo===false?' (Inactivo)':''}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn-sm btn-p" id="btn-new-user" style="width:auto">+ Nuevo usuario</button>
     </div>
+    <div id="user-detail"></div>
   `;
   g('btn-new-user').onclick=()=>openUserModal(null);
-  document.querySelectorAll('.edit-user').forEach(btn=>{
-    btn.onclick=()=>{let u=users.find(x=>x.id===btn.dataset.id);if(u)openUserModal(u);};
-  });
+  g('user-select').onchange=function(){
+    let id=this.value;
+    let detail=g('user-detail');
+    if(!id){detail.innerHTML='';return;}
+    let u=users.find(x=>x.id===id);
+    if(!u){detail.innerHTML='';return;}
+    detail.innerHTML=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+      <div><h4 style="font-size:15px;color:var(--pd)">${u.nombre} ${u.activo===false?'<span class="badge b-gray">Inactivo</span>':'<span class="badge b-green">Activo</span>'}</h4>
+      <p style="font-size:12px;color:var(--g600);margin-top:4px">Usuario: <strong>${u.usuario}</strong></p>
+      <p style="font-size:12px;color:var(--g600)">Rol: <strong>${u.rol}</strong></p>
+      <p style="font-size:12px;color:var(--g600)">Clave: <strong>${u.clave}</strong></p>
+      </div>
+      <button class="btn-sm btn-p" id="btn-edit-selected">Editar</button>
+    </div></div>`;
+    g('btn-edit-selected').onclick=()=>openUserModal(u);
+  };
 }
 
 function openUserModal(user){
