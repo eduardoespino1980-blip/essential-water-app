@@ -176,6 +176,7 @@ function parseNum(v){return parseFloat(v||0)||0;}
 function round2(n){return Math.round((parseFloat(n||0)||0)*100)/100;}
 function roleLabel(r){return r==='admin'?'Admin':(r==='super'||r==='supervisor')?'Super':'Vendedor';}
 function isAdmin(){return U&&(U.rol==='admin'||U.rol==='super'||U.rol==='supervisor');}
+function canAccessEmpleados(){return U&&(isAdmin()||U.usuario==='Ruta Norte'||U.id==='E-002');}
 function showAlert(id,msg,ok){var e=g(id);if(!e)return;e.textContent=msg;e.className='alert '+(ok?'alert-ok':'alert-err');e.style.display='block';setTimeout(()=>{e.style.display='none';},ok?3500:5000);}
 function lockBtn(b,t){if(!b||b.disabled)return false;b.disabled=true;b._ot=b.textContent;b.textContent=t||'Guardando...';return true;}
 function unlockBtn(b){if(!b)return;b.disabled=false;if(b._ot)b.textContent=b._ot;}
@@ -235,6 +236,9 @@ function buildNav(){
     tabs.push({id:'consumo',label:'Consumo',icon:'M20 8h-2.81c-.45-.78-1.07-1.45-1.82-1.96L17 4.41 15.59 3l-2.17 2.17C12.96 5.06 12.49 5 12 5c-.49 0-.96.06-1.41.17L8.41 3 7 4.41l1.62 1.63C7.88 6.55 7.26 7.22 6.81 8H4v2h2.09c-.05.33-.09.66-.09 1v1H4v2h2v1c0 .34.04.67.09 1H4v2h2.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H20v-2h-2.09c.05-.33.09-.66.09-1v-1h2v-2h-2v-1c0-.34-.04-.67-.09-1H20V8zm-6 8h-4v-2h4v2zm0-4h-4v-2h4v2z'});
     if(U.rol==='admin') tabs.push({id:'usuarios',label:'Usuarios',icon:'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'});
   }
+  if(canAccessEmpleados()){
+    tabs.push({id:'empleados',label:'Empleados',icon:'M16 4c0-1.11.89-2 2-2s2 .89 2 2-.89 2-2 2-2-.89-2-2zm4 18v-6h2.5l-2.54-7.63C19.68 7.55 18.92 7 18.06 7h-.12c-.86 0-1.63.55-1.91 1.37l-.86 2.58c1.08.6 1.83 1.75 1.83 3.05v8h3zM12.5 11.5c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5S11 9.17 11 10s.67 1.5 1.5 1.5zM5.5 6c1.11 0 2-.89 2-2s-.89-2-2-2-2 .89-2 2 .89 2 2 2zm2 16v-7H9V9c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v6h1.5v7h4zm6 0v-4h1v-4c0-.82-.68-1.5-1.5-1.5h-2c-.82 0-1.5.68-1.5 1.5v4h1v4h3z'});
+  }
   tabs.push({id:'ayuda',label:'Ayuda',icon:'M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z'});
   const nav=g('bnav');nav.innerHTML='';
   tabs.forEach(t=>{
@@ -262,6 +266,7 @@ function renderCurrentTab(){
   else if(id==='caja')renderCaja();
   else if(id==='dashboard')renderDashboard();
   else if(id==='consumo')renderConsumo();
+  else if(id==='empleados')renderEmpleadosModulo();
   else if(id==='usuarios')renderUsuarios();
   else if(id==='ayuda')renderAyuda();
 }
@@ -780,16 +785,35 @@ async function renderCXC(){
 
 async function cxcResumen(){
   let el=g('cxc-body');
-  const data=await fetchAll(SB.from('ventas_detalle').select('cliente_id,cliente_nombre,saldo').eq('eliminada',false).gt('saldo',0));
+  const[data,prestData]=await Promise.all([
+    fetchAll(SB.from('ventas_detalle').select('cliente_id,cliente_nombre,saldo').eq('eliminada',false).gt('saldo',0)),
+    fetchAll(SB.from('empleados_pagos').select('empleado_id,empleado_nombre,saldo').eq('anulado',false).eq('tipo','Prestamo').gt('saldo',0))
+  ]);
   let map={};
   data.forEach(r=>{
     if(!map[r.cliente_id])map[r.cliente_id]={id:r.cliente_id,nombre:r.cliente_nombre,saldo:0};
     map[r.cliente_id].saldo+=parseNum(r.saldo);
   });
   let list=Object.values(map).filter(c=>c.saldo>0.01).sort((a,b)=>b.saldo-a.saldo);
-  let totalCXC=list.reduce((s,c)=>s+c.saldo,0);
-  el.innerHTML=`<div class="tbox"><span class="tbox-l">Total CXC</span><span class="tbox-v">${fmt(totalCXC)}</span></div>`+
-    (list.length?list.map(c=>`<div class="litem"><div class="litem-info"><h4>${c.nombre}</h4></div><div class="litem-r"><div class="amt">${fmt(c.saldo)}</div></div></div>`).join(''):'<p style="text-align:center;color:var(--g400);padding:20px;font-size:13px">Sin saldos pendientes</p>');
+  let totalClientes=list.reduce((s,c)=>s+c.saldo,0);
+  // Prestamos empleados agrupados
+  let empMap={};
+  (prestData||[]).forEach(r=>{
+    if(!empMap[r.empleado_id])empMap[r.empleado_id]={id:r.empleado_id,nombre:r.empleado_nombre,saldo:0};
+    empMap[r.empleado_id].saldo+=parseNum(r.saldo);
+  });
+  let empList=Object.values(empMap).filter(e=>e.saldo>0.01).sort((a,b)=>b.saldo-a.saldo);
+  let totalEmp=empList.reduce((s,e)=>s+e.saldo,0);
+  let totalCXC=totalClientes+totalEmp;
+  let html=`<div class="tbox"><span class="tbox-l">Total CXC</span><span class="tbox-v">${fmt(totalCXC)}</span></div>`+
+    `<div style="font-size:12px;color:var(--g600);margin:-6px 0 8px 4px">Clientes: <strong>${fmt(totalClientes)}</strong> · Préstamos empleados: <strong>${fmt(totalEmp)}</strong></div>`;
+  html+=`<h4 style="font-size:13px;font-weight:700;margin:12px 0 6px;color:var(--pd)">Clientes</h4>`;
+  html+=list.length?list.map(c=>`<div class="litem"><div class="litem-info"><h4>${c.nombre}</h4></div><div class="litem-r"><div class="amt">${fmt(c.saldo)}</div></div></div>`).join(''):'<p style="text-align:center;color:var(--g400);padding:12px;font-size:12px">Sin saldos de clientes</p>';
+  if(empList.length){
+    html+=`<h4 style="font-size:13px;font-weight:700;margin:14px 0 6px;color:var(--amber)">Préstamos empleados</h4>`;
+    html+=empList.map(e=>`<div class="litem"><div class="litem-info"><h4>${e.nombre}</h4><p>Préstamo pendiente</p></div><div class="litem-r"><div class="amt" style="color:var(--amber)">${fmt(e.saldo)}</div></div></div>`).join('');
+  }
+  el.innerHTML=html;
 }
 
 async function cxcPorVenta(){
@@ -1327,13 +1351,14 @@ async function loadCaja(){
   // NOTA: para abonosPorVenta cargamos TODOS los pagos/aplicaciones sin filtro de fecha,
   // para que el saldo inicial de una venta Mixto sea consistente sin importar qué día consultes
   // CRITICAL: Usamos fetchAll para paginar, ya que Supabase tiene limite de 1000 filas por request
-  const[allVentas,allPagos,allPP,allCortes,allApp,allPagosAnyFull]=await Promise.all([
+  const[allVentas,allPagos,allPP,allCortes,allApp,allPagosAnyFull,allEmpPagos]=await Promise.all([
     fetchAll(SB.from('ventas_detalle').select('*').eq('eliminada',false).lte('fecha',hasta).order('fecha')),
     fetchAll(SB.from('pagos').select('*').eq('anulado',false).lte('fecha',hasta).order('fecha')),
     fetchAll(SB.from('pagos_proveedor').select('*').eq('anulado',false).lte('fecha',hasta).order('fecha')),
     fetchAll(SB.from('corte_caja').select('*').lte('fecha',hasta).order('fecha')),
     fetchAll(SB.from('aplicacion_pagos').select('pago_id,venta_id,monto')),
-    fetchAll(SB.from('pagos').select('id,venta_id,total_dinero,regalias,anulado'))
+    fetchAll(SB.from('pagos').select('id,venta_id,total_dinero,regalias,anulado')),
+    fetchAll(SB.from('empleados_pagos').select('*').eq('anulado',false).lte('fecha',hasta).order('fecha'))
   ]);
   let allPagosAny=allPagosAnyFull.filter(p=>!p.anulado);
 
@@ -1388,6 +1413,21 @@ async function loadCaja(){
       else if(p.metodo==='Transferencia')s_tr+=parseNum(p.monto);
       else if(p.metodo==='Cheque')s_ch+=parseNum(p.monto);
     });
+    // Empleados_pagos: Salario/Adelanto/Bono/Comision/Prestamo = salidas; Abono_Prestamo = entradas
+    allEmpPagos.filter(p=>p.fecha===fecha).forEach(p=>{
+      let monto=parseNum(p.monto);
+      let met=p.metodo;
+      let esEntrada=p.tipo==='Abono_Prestamo';
+      if(esEntrada){
+        if(met==='Efectivo')e_ef+=monto;
+        else if(met==='Transferencia')e_tr+=monto;
+        else if(met==='Cheque')e_ch+=monto;
+      }else{
+        if(met==='Efectivo')s_ef+=monto;
+        else if(met==='Transferencia')s_tr+=monto;
+        else if(met==='Cheque')s_ch+=monto;
+      }
+    });
     return {e_ef,e_tr,e_ch,s_ef,s_tr,s_ch,
       totalEnt:round2(e_ef+e_tr+e_ch),totalSal:round2(s_ef+s_tr+s_ch)};
   }
@@ -1398,6 +1438,7 @@ async function loadCaja(){
   allPagos.forEach(p=>allDates.add(p.fecha));
   allPP.forEach(p=>allDates.add(p.fecha));
   allCortes.forEach(c=>allDates.add(c.fecha));
+  allEmpPagos.forEach(p=>allDates.add(p.fecha));
   allDates.add(desde);
   let sortedDates=[...allDates].filter(d=>d&&d<=hasta).sort();
 
@@ -1534,13 +1575,15 @@ async function loadDash(){
   el.innerHTML='<div class="loading"><div class="spin"></div></div>';
   let desde=g('dd').value,hasta=g('dh').value;
 
-  const[ventasArr,pagosArr,egresosArr,ppArr,cxcArr,cxpArr]=await Promise.all([
+  const[ventasArr,pagosArr,egresosArr,ppArr,cxcArr,cxpArr,empPagosArr,empPrestSaldos]=await Promise.all([
     fetchAll(SB.from('ventas_detalle').select('*').eq('eliminada',false).gte('fecha',desde).lte('fecha',hasta)),
     fetchAll(SB.from('pagos').select('*').eq('anulado',false).gte('fecha',desde).lte('fecha',hasta)),
     fetchAll(SB.from('egresos').select('*').gte('fecha',desde).lte('fecha',hasta)),
     fetchAll(SB.from('pagos_proveedor').select('*').eq('anulado',false).gte('fecha',desde).lte('fecha',hasta)),
     fetchAll(SB.from('ventas_detalle').select('cliente_id,cliente_nombre,saldo').eq('eliminada',false).gt('saldo',0)),
-    fetchAll(SB.from('egresos').select('proveedor_id,proveedor_nombre,saldo').gt('saldo',0))
+    fetchAll(SB.from('egresos').select('proveedor_id,proveedor_nombre,saldo').gt('saldo',0)),
+    fetchAll(SB.from('empleados_pagos').select('*').eq('anulado',false).gte('fecha',desde).lte('fecha',hasta)),
+    fetchAll(SB.from('empleados_pagos').select('saldo').eq('anulado',false).eq('tipo','Prestamo').gt('saldo',0))
   ]);
   // wrap in {data:...} para compat con codigo existente
   const ventasRes={data:ventasArr},pagosRes={data:pagosArr},egresosRes={data:egresosArr},ppRes={data:ppArr},cxcRes={data:cxcArr},cxpRes={data:cxpArr};
@@ -1559,10 +1602,13 @@ async function loadDash(){
   regalias+=pagos.reduce((s,p)=>s+parseNum(p.regalias),0);
 
   let totalGastos=egresos.reduce((s,e)=>s+parseNum(e.monto),0);
-  let totalCXC=(cxcRes.data||[]).reduce((s,r)=>s+parseNum(r.saldo),0);
+  let nomina=(empPagosArr||[]).filter(r=>['Salario','Adelanto','Bono','Comision'].includes(r.tipo)).reduce((s,r)=>s+parseNum(r.monto),0);
+  let prestamosEmp=(empPrestSaldos||[]).reduce((s,r)=>s+parseNum(r.saldo),0);
+  let totalCXCclientes=(cxcRes.data||[]).reduce((s,r)=>s+parseNum(r.saldo),0);
+  let totalCXC=totalCXCclientes+prestamosEmp;
   let totalCXP=(cxpRes.data||[]).reduce((s,r)=>s+parseNum(r.saldo),0);
   let abonosProv=ppagos.reduce((s,p)=>s+parseNum(p.monto),0);
-  let utilidad=round2(ventasNetas-totalGastos);
+  let utilidad=round2(ventasNetas-totalGastos-nomina);
 
   el.innerHTML=`
     <div class="mgrid">
@@ -1573,7 +1619,8 @@ async function loadDash(){
     </div>
     ${U.rol==='admin'?`<div class="mgrid">
       <div class="mcard"><div class="mcard-l">Gastos</div><div class="mcard-v" style="color:var(--red)">${fmt(totalGastos)}</div></div>
-      <div class="mcard"><div class="mcard-l">CXC total</div><div class="mcard-v">${fmt(totalCXC)}</div></div>
+      <div class="mcard"><div class="mcard-l">Nómina</div><div class="mcard-v" style="color:var(--red)">${fmt(nomina)}</div></div>
+      <div class="mcard"><div class="mcard-l">CXC total</div><div class="mcard-v">${fmt(totalCXC)}</div><div class="mcard-l" style="font-size:10px;color:var(--g400)">Clientes ${fmt(totalCXCclientes)} · Emp. ${fmt(prestamosEmp)}</div></div>
       <div class="mcard"><div class="mcard-l">CXP total</div><div class="mcard-v">${fmt(totalCXP)}</div></div>
       <div class="mcard"><div class="mcard-l">Abonos prov.</div><div class="mcard-v">${fmt(abonosProv)}</div></div>
       <div class="mcard"><div class="mcard-l">Utilidad est.</div><div class="mcard-v" style="color:${utilidad>=0?'var(--green)':'var(--red)'}">${fmt(utilidad)}</div></div>
@@ -1752,6 +1799,245 @@ async function loadConsumo(){
         ${d.regaliasDinero>0?`<div style="font-size:11px;color:var(--g600);margin-top:6px;padding-top:6px;border-top:1px dashed var(--g200)">${regDin}</div>`:''}
       </div>`;
     }).join('');
+}
+
+// ===================== MODULO EMPLEADOS =====================
+let empView='pagos';
+async function renderEmpleadosModulo(){
+  if(!canAccessEmpleados()){g('content').innerHTML='<div class="loading">Sin acceso</div>';return;}
+  const c=g('content');
+  c.innerHTML=`
+    <div class="stitle">Empleados</div>
+    <div class="subtle">Registra pagos (salarios, adelantos, bonos, comisiones) y préstamos a empleados. Los préstamos también aparecen en CXC.</div>
+    <div class="tabs-mini">
+      <button class="tabmini ${empView==='pagos'?'active':''}" data-v="pagos">Pagos</button>
+      <button class="tabmini ${empView==='prestamos'?'active':''}" data-v="prestamos">Préstamos</button>
+      <button class="tabmini ${empView==='historial'?'active':''}" data-v="historial">Historial</button>
+    </div>
+    <div id="emp-body"><div class="loading"><div class="spin"></div></div></div>
+  `;
+  document.querySelectorAll('#content .tabmini').forEach(b=>b.onclick=()=>{empView=b.dataset.v;renderEmpleadosModulo();});
+  if(empView==='pagos')await empPagosView();
+  else if(empView==='prestamos')await empPrestamosView();
+  else if(empView==='historial')await empHistorialView();
+}
+
+function empleadoOpts(sel){
+  return D.empleados.filter(e=>e.activo!==false).map(e=>`<option value="${e.id}" ${sel===e.id?'selected':''}>${e.nombre}</option>`).join('');
+}
+
+// --- Sub-view: Pagos ---
+async function empPagosView(){
+  let el=g('emp-body');
+  el.innerHTML=`
+    <div class="card">
+      <div class="alert" id="aemp"></div>
+      <div class="grid2">
+        <div class="field"><label>Fecha</label><input type="date" id="ep-f" value="${hoy()}"></div>
+        <div class="field"><label>Monto</label><input type="number" id="ep-m" step="0.01" min="0" placeholder="0.00"></div>
+      </div>
+      <div class="field"><label>Empleado</label><select id="ep-emp"><option value="">Selecciona...</option>${empleadoOpts()}</select></div>
+      <div class="grid2">
+        <div class="field"><label>Tipo</label><select id="ep-tipo">
+          <option value="Salario">Salario</option>
+          <option value="Adelanto">Adelanto</option>
+          <option value="Bono">Bono</option>
+          <option value="Comision">Comisión</option>
+        </select></div>
+        <div class="field"><label>Método</label><select id="ep-met">
+          <option>Efectivo</option><option>Transferencia</option><option>Cheque</option>
+        </select></div>
+      </div>
+      <div class="field"><label>Observación</label><input type="text" id="ep-obs" placeholder="Opcional..."></div>
+      <button class="btn btn-p" id="btn-ep-save">Registrar pago</button>
+    </div>
+    <hr class="sep">
+    <div class="stitle" style="font-size:14px">Últimos pagos</div>
+    <div id="ep-list"><div class="loading"><div class="spin"></div></div></div>
+  `;
+  g('btn-ep-save').onclick=guardarEmpPago;
+  loadEmpPagosList();
+}
+
+async function guardarEmpPago(){
+  let f=g('ep-f').value, monto=parseNum(g('ep-m').value), empId=g('ep-emp').value;
+  let tipo=g('ep-tipo').value, met=g('ep-met').value, obs=g('ep-obs').value.trim();
+  if(!f||!monto||!empId){showAlert('aemp','Completa fecha, monto y empleado.',false);return;}
+  let btn=g('btn-ep-save');if(!lockBtn(btn))return;
+  try{
+    let emp=D.empleados.find(e=>e.id===empId);
+    await SB.from('empleados_pagos').insert([{
+      id:uid('EP'),fecha:f,empleado_id:empId,empleado_nombre:emp?emp.nombre:'',
+      tipo:tipo,monto:monto,metodo:met,observacion:obs,
+      prestamo_ref:null,saldo:0,anulado:false,usuario:U.usuario
+    }]);
+    showAlert('aemp','Pago registrado '+fmt(monto),true);
+    g('ep-m').value='';g('ep-obs').value='';g('ep-emp').value='';
+    loadEmpPagosList();
+  }catch(ex){showAlert('aemp','Error: '+ex.message,false);}
+  finally{unlockBtn(btn);}
+}
+
+async function loadEmpPagosList(){
+  let el=g('ep-list');if(!el)return;
+  el.innerHTML='<div class="loading"><div class="spin"></div></div>';
+  const{data}=await SB.from('empleados_pagos').select('*').in('tipo',['Salario','Adelanto','Bono','Comision']).order('fecha',{ascending:false}).limit(50);
+  let rows=data||[];
+  if(!rows.length){el.innerHTML='<p style="text-align:center;color:var(--g400);padding:20px;font-size:13px">Sin pagos registrados</p>';return;}
+  el.innerHTML=rows.map(r=>{
+    let anul=r.anulado;
+    return `<div class="litem" style="${anul?'opacity:0.5':''}"><div class="litem-info"><h4>${r.empleado_nombre} ${anul?'<span class="badge b-red">Anulado</span>':''}</h4><p>${fmtDate(r.fecha)} · ${r.tipo} · ${r.metodo}${r.observacion?' · '+r.observacion:''}</p></div><div class="litem-r"><div class="amt">${fmt(r.monto)}</div>${!anul?`<button class="btn-sm btn-red anular-ep" data-id="${r.id}" style="margin-top:4px">Anular</button>`:''}</div></div>`;
+  }).join('');
+  el.querySelectorAll('.anular-ep').forEach(b=>b.onclick=()=>anularEmpPago(b.dataset.id));
+}
+
+async function anularEmpPago(id){
+  let motivo=prompt('Motivo de anulación:');
+  if(!motivo)return;
+  try{
+    await SB.from('empleados_pagos').update({anulado:true,motivo_anulacion:motivo,fecha_anulacion:new Date().toISOString(),usuario_anulacion:U.usuario}).eq('id',id);
+    loadEmpPagosList();
+  }catch(ex){alert('Error: '+ex.message);}
+}
+
+// --- Sub-view: Prestamos ---
+async function empPrestamosView(){
+  let el=g('emp-body');
+  el.innerHTML=`
+    <div class="card">
+      <div class="alert" id="apre"></div>
+      <h4 style="font-size:14px;font-weight:700;margin-bottom:8px;color:var(--pd)">Registrar nuevo préstamo</h4>
+      <div class="grid2">
+        <div class="field"><label>Fecha</label><input type="date" id="pr-f" value="${hoy()}"></div>
+        <div class="field"><label>Monto prestado</label><input type="number" id="pr-m" step="0.01" min="0" placeholder="0.00"></div>
+      </div>
+      <div class="field"><label>Empleado</label><select id="pr-emp"><option value="">Selecciona...</option>${empleadoOpts()}</select></div>
+      <div class="field"><label>Método</label><select id="pr-met"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option></select></div>
+      <div class="field"><label>Observación</label><input type="text" id="pr-obs" placeholder="Motivo del préstamo, plazo, etc."></div>
+      <button class="btn btn-p" id="btn-pr-save">Registrar préstamo</button>
+    </div>
+    <hr class="sep">
+    <div class="stitle" style="font-size:14px">Préstamos activos (con saldo pendiente)</div>
+    <div id="pr-list"><div class="loading"><div class="spin"></div></div></div>
+  `;
+  g('btn-pr-save').onclick=guardarPrestamo;
+  loadPrestamosList();
+}
+
+async function guardarPrestamo(){
+  let f=g('pr-f').value, monto=parseNum(g('pr-m').value), empId=g('pr-emp').value;
+  let met=g('pr-met').value, obs=g('pr-obs').value.trim();
+  if(!f||!monto||!empId){showAlert('apre','Completa fecha, monto y empleado.',false);return;}
+  let btn=g('btn-pr-save');if(!lockBtn(btn))return;
+  try{
+    let emp=D.empleados.find(e=>e.id===empId);
+    await SB.from('empleados_pagos').insert([{
+      id:uid('PR'),fecha:f,empleado_id:empId,empleado_nombre:emp?emp.nombre:'',
+      tipo:'Prestamo',monto:monto,metodo:met,observacion:obs,
+      prestamo_ref:null,saldo:monto,anulado:false,usuario:U.usuario
+    }]);
+    showAlert('apre','Préstamo registrado '+fmt(monto),true);
+    g('pr-m').value='';g('pr-obs').value='';g('pr-emp').value='';
+    loadPrestamosList();
+  }catch(ex){showAlert('apre','Error: '+ex.message,false);}
+  finally{unlockBtn(btn);}
+}
+
+async function loadPrestamosList(){
+  let el=g('pr-list');if(!el)return;
+  el.innerHTML='<div class="loading"><div class="spin"></div></div>';
+  const{data}=await SB.from('empleados_pagos').select('*').eq('tipo','Prestamo').eq('anulado',false).gt('saldo',0).order('fecha');
+  let rows=data||[];
+  let totalPend=rows.reduce((s,r)=>s+parseNum(r.saldo),0);
+  if(!rows.length){el.innerHTML='<p style="text-align:center;color:var(--g400);padding:20px;font-size:13px">Sin préstamos pendientes</p>';return;}
+  el.innerHTML=`<div class="tbox"><span class="tbox-l">Total prestado pendiente</span><span class="tbox-v">${fmt(totalPend)}</span></div>`+
+    rows.map(r=>`<div class="litem"><div class="litem-info"><h4>${r.empleado_nombre}</h4><p>${fmtDate(r.fecha)} · ${r.metodo}${r.observacion?' · '+r.observacion:''} · Original: ${fmt(r.monto)}</p></div><div class="litem-r"><div class="amt">${fmt(r.saldo)}</div><button class="btn-sm btn-green abonar-pr" data-id="${r.id}" data-saldo="${r.saldo}" data-emp="${r.empleado_id}" data-empn="${r.empleado_nombre}" style="margin-top:4px">Abonar</button></div></div>`).join('');
+  el.querySelectorAll('.abonar-pr').forEach(b=>b.onclick=()=>abonarPrestamoModal(b.dataset.id,parseNum(b.dataset.saldo),b.dataset.emp,b.dataset.empn));
+}
+
+function abonarPrestamoModal(prId,saldoPend,empId,empNom){
+  let html=`<div class="alert" id="aabp"></div>
+    <p style="font-size:13px;margin-bottom:8px"><strong>Empleado:</strong> ${empNom}</p>
+    <p style="font-size:13px;margin-bottom:12px"><strong>Saldo pendiente:</strong> ${fmt(saldoPend)}</p>
+    <div class="grid2">
+      <div class="field"><label>Fecha</label><input type="date" id="abp-f" value="${hoy()}"></div>
+      <div class="field"><label>Monto abono</label><input type="number" id="abp-m" step="0.01" min="0" value="${saldoPend}"></div>
+    </div>
+    <div class="field"><label>Método</label><select id="abp-met"><option>Efectivo</option><option>Transferencia</option><option>Cheque</option></select></div>
+    <div class="field"><label>Observación</label><input type="text" id="abp-obs"></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-p" id="btn-abp-save" style="flex:1">Registrar abono</button>
+      <button class="btn btn-gray" onclick="closeModal()" style="flex:1">Cancelar</button>
+    </div>`;
+  openModal('Abono a préstamo',html);
+  g('btn-abp-save').onclick=async()=>{
+    let btn=g('btn-abp-save');if(!lockBtn(btn))return;
+    let f=g('abp-f').value, monto=parseNum(g('abp-m').value), met=g('abp-met').value, obs=g('abp-obs').value.trim();
+    if(!f||monto<=0){showAlert('aabp','Ingresa fecha y monto válido.',false);unlockBtn(btn);return;}
+    if(monto>saldoPend+0.01){showAlert('aabp','El abono no puede ser mayor al saldo.',false);unlockBtn(btn);return;}
+    try{
+      await SB.from('empleados_pagos').insert([{
+        id:uid('AP'),fecha:f,empleado_id:empId,empleado_nombre:empNom,
+        tipo:'Abono_Prestamo',monto:monto,metodo:met,observacion:obs,
+        prestamo_ref:prId,saldo:0,anulado:false,usuario:U.usuario
+      }]);
+      let nuevoSaldo=round2(saldoPend-monto);
+      await SB.from('empleados_pagos').update({saldo:nuevoSaldo}).eq('id',prId);
+      closeModal();loadPrestamosList();
+    }catch(ex){showAlert('aabp','Error: '+ex.message,false);}
+    finally{unlockBtn(btn);}
+  };
+}
+
+// --- Sub-view: Historial ---
+async function empHistorialView(){
+  let el=g('emp-body');
+  el.innerHTML=`
+    <div class="card">
+      <div class="field"><label>Empleado</label><select id="eh-emp"><option value="">Selecciona empleado...</option>${empleadoOpts()}</select></div>
+      <div class="grid2">
+        <div class="field"><label>Desde</label><input type="date" id="eh-d"></div>
+        <div class="field"><label>Hasta</label><input type="date" id="eh-h"></div>
+      </div>
+    </div>
+    <div id="eh-body"></div>
+  `;
+  async function loadHist(){
+    let empId=g('eh-emp').value;
+    let body=g('eh-body');
+    if(!empId){body.innerHTML='';return;}
+    body.innerHTML='<div class="loading"><div class="spin"></div></div>';
+    let desde=g('eh-d').value, hasta=g('eh-h').value;
+    let q=SB.from('empleados_pagos').select('*').eq('empleado_id',empId).order('fecha',{ascending:false});
+    if(desde)q=q.gte('fecha',desde);
+    if(hasta)q=q.lte('fecha',hasta);
+    const{data}=await q;
+    let rows=data||[];
+    if(!rows.length){body.innerHTML='<p style="text-align:center;color:var(--g400);padding:20px;font-size:13px">Sin movimientos</p>';return;}
+    // Totales por tipo (activos)
+    let sumNomina=0, sumPrestamo=0, sumAbonoPrestamo=0, saldoPrestamos=0;
+    rows.forEach(r=>{
+      if(r.anulado)return;
+      let m=parseNum(r.monto);
+      if(['Salario','Adelanto','Bono','Comision'].includes(r.tipo))sumNomina+=m;
+      else if(r.tipo==='Prestamo'){sumPrestamo+=m;saldoPrestamos+=parseNum(r.saldo);}
+      else if(r.tipo==='Abono_Prestamo')sumAbonoPrestamo+=m;
+    });
+    body.innerHTML=`<div class="mgrid">
+      <div class="mcard"><div class="mcard-l">Nómina total</div><div class="mcard-v">${fmt(sumNomina)}</div></div>
+      <div class="mcard" style="border-color:var(--amber)"><div class="mcard-l">Prestado total</div><div class="mcard-v">${fmt(sumPrestamo)}</div></div>
+      <div class="mcard" style="border-color:var(--green)"><div class="mcard-l">Abonado a préstamos</div><div class="mcard-v">${fmt(sumAbonoPrestamo)}</div></div>
+      <div class="mcard" style="border-color:var(--red)"><div class="mcard-l">Saldo préstamos pendiente</div><div class="mcard-v">${fmt(saldoPrestamos)}</div></div>
+    </div>`+
+    rows.map(r=>{
+      let anul=r.anulado;
+      let color = r.tipo==='Prestamo'?'var(--amber)':(r.tipo==='Abono_Prestamo'?'var(--green)':'var(--pd)');
+      return `<div class="litem" style="${anul?'opacity:0.5':''}"><div class="litem-info"><h4 style="color:${color}">${r.tipo}${r.tipo==='Prestamo'&&r.saldo>0?' (Saldo '+fmt(r.saldo)+')':''}${anul?' <span class="badge b-red">Anulado</span>':''}</h4><p>${fmtDate(r.fecha)} · ${r.metodo}${r.observacion?' · '+r.observacion:''}</p></div><div class="litem-r"><div class="amt">${fmt(r.monto)}</div></div></div>`;
+    }).join('');
+  }
+  g('eh-emp').onchange=loadHist;
+  g('eh-d').onchange=loadHist;
+  g('eh-h').onchange=loadHist;
 }
 
 // ===================== GESTION DE USUARIOS (solo admin) =====================
@@ -1987,7 +2273,7 @@ function renderAyuda(){
         <li><strong>Cobrado</strong>: dinero real recibido (sin incluir regal\u00edas)</li>
         <li>Top 5 clientes y productos</li>
         <li>Resumen por cliente con productos agrupados</li>
-        ${U.rol==='admin'?'<li>Gastos, CXC, CXP, utilidad estimada</li>':''}
+        ${U.rol==='admin'?'<li>Gastos, Nómina, CXC (clientes + préstamos empleados), CXP, utilidad estimada (= Ventas − Gastos − Nómina)</li>':''}
       </ul>
     </div>
 
@@ -2002,6 +2288,19 @@ function renderAyuda(){
         <li>Las reglas se guardan en el navegador (cada dispositivo puede tener su configuraci\u00f3n)</li>
       </ul>
     </div>
+
+    ${canAccessEmpleados()?`
+    <div class="card">
+      <h4 style="color:var(--pd);margin-bottom:8px">Empleados (Admin, Super, Ruta Norte)</h4>
+      <ul style="font-size:13px;color:var(--g600);padding-left:18px;line-height:1.8">
+        <li><strong>Pagos</strong>: registra Salario, Adelanto, Bono o Comisión a un empleado. Afecta caja (salida) y suma a Nómina (reduce utilidad).</li>
+        <li><strong>Préstamos</strong>: registra dinero prestado al empleado. Afecta caja pero <strong>NO utilidad</strong> (es cuenta por cobrar). Aparece en CXC → Préstamos empleados.</li>
+        <li><strong>Abonos a préstamo</strong>: cuando el empleado paga, selecciona el préstamo y registra el abono. Entra a caja y reduce el saldo del préstamo.</li>
+        <li><strong>Historial</strong>: filtra por empleado y fechas para ver todos sus movimientos y totales.</li>
+        <li>Los préstamos con saldo pendiente se ven en <strong>CXC → Resumen</strong> y suman al total de CXC.</li>
+        <li>Los pagos (Salario/Adelanto/Bono/Comisión) suman a <strong>Nómina</strong> en el Dashboard y reducen la utilidad estimada.</li>
+      </ul>
+    </div>`:''}
 
     ${U.rol==='admin'?`
     <div class="card">
