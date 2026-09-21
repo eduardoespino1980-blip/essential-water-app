@@ -127,7 +127,7 @@ table.dtable{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
       <span class="tb-title">Essential Water</span>
     </div>
     <div class="tb-right">
-      <span class="ubadge" id="ubadge"></span>
+      <span class="ubadge" id="ubadge" style="cursor:pointer" title="Cambiar mi clave"></span>
       <button class="btn-out" id="btn-refresh" title="Actualizar datos" style="padding:6px 8px;font-size:14px;line-height:1">&#x21bb;</button>
       <button class="btn-out" id="btn-logout">Salir</button>
     </div>
@@ -189,24 +189,70 @@ function describeItems(items){return items.map(i=>{let p=D.productos.find(x=>x.i
 document.addEventListener('click',e=>{if(e.target.classList.contains('modal-ov'))closeModal();});
 
 // ===================== AUTH =====================
+// La validacion ocurre en Supabase Auth, no en el navegador. El usuario
+// escribe su nombre de siempre ("Ruta Norte") y aqui se traduce al correo
+// interno con que esta registrado. La clave viaja cifrada y nunca se guarda.
+const AUTH_DOMINIO='@essentialwater.invalid';
+function usuarioAEmail(u){
+  return u.normalize('NFKD').replace(/[\u0300-\u036f]/g,'')
+          .toLowerCase().replace(/[^a-z0-9]+/g,'.').replace(/^\.|\.$/g,'')+AUTH_DOMINIO;
+}
+
+// El JWT solo dice QUIEN es (empleado_id). El rol y el estado activo se leen
+// de la tabla empleados en cada entrada, para que los cambios que haga el
+// admin surtan efecto de inmediato y no queden congelados en el token.
+async function aplicarSesion(session){
+  let m=(session&&session.user&&session.user.app_metadata)||{};
+  if(!m.empleado_id)return false;
+  const{data,error}=await SB.from('empleados').select('id,nombre,rol,usuario,activo').eq('id',m.empleado_id).single();
+  if(error||!data||data.activo===false)return false;
+  U={id:data.id,nombre:data.nombre,rol:data.rol,usuario:data.usuario};
+  return true;
+}
+
+async function entrarAlApp(){
+  g('login-screen').classList.add('hidden');g('app').classList.remove('hidden');
+  g('ubadge').textContent=(U.nombre||U.usuario)+' \u00b7 '+roleLabel(U.rol);
+  g('ubadge').onclick=abrirCambioClave;
+  await loadBase();buildNav();showTab('ventas');
+}
+
 g('btn-login').onclick=async()=>{
   let user=g('inp-user').value.trim(),pass=g('inp-pass').value.trim(),err=g('lerr');
   if(!user||!pass){err.textContent='Ingresa usuario y clave';err.style.display='block';return;}
   err.style.display='none';
   let btn=g('btn-login');btn.disabled=true;btn.textContent='Verificando...';
   try{
-    const{data,error}=await SB.from('empleados').select('*').eq('usuario',user).eq('clave',pass).eq('activo',true).single();
-    if(error||!data){err.textContent='Usuario o clave incorrectos';err.style.display='block';return;}
-    U={id:data.id,nombre:data.nombre,rol:data.rol,usuario:data.usuario};
-    g('login-screen').classList.add('hidden');g('app').classList.remove('hidden');
-    g('ubadge').textContent=(U.nombre||U.usuario)+' \u00b7 '+roleLabel(U.rol);
-    await loadBase();buildNav();showTab('ventas');
+    const{data,error}=await SB.auth.signInWithPassword({email:usuarioAEmail(user),password:pass});
+    if(error||!data||!data.session){
+      // Mensaje generico a proposito: no revelamos si el usuario existe.
+      err.textContent='Usuario o clave incorrectos';err.style.display='block';return;
+    }
+    if(!await aplicarSesion(data.session)){
+      await SB.auth.signOut();
+      err.textContent='Tu cuenta esta inactiva. Avisa al administrador.';
+      err.style.display='block';return;
+    }
+    await entrarAlApp();
   }catch(ex){err.textContent='Error de conexi\u00f3n';err.style.display='block';}
   finally{btn.disabled=false;btn.textContent='Ingresar';}
 };
 g('inp-pass').onkeydown=e=>{if(e.key==='Enter')g('btn-login').click();};
 g('inp-user').onkeydown=e=>{if(e.key==='Enter')g('inp-pass').focus();};
-g('btn-logout').onclick=()=>{U=null;g('app').classList.add('hidden');g('login-screen').classList.remove('hidden');g('inp-user').value='';g('inp-pass').value='';};
+g('btn-logout').onclick=async()=>{
+  await SB.auth.signOut();
+  U=null;g('app').classList.add('hidden');g('login-screen').classList.remove('hidden');
+  g('inp-user').value='';g('inp-pass').value='';
+};
+
+// Si la sesion sigue viva (recarga de pagina, volver a abrir), entra directo.
+(async()=>{
+  try{
+    const{data}=await SB.auth.getSession();
+    if(data&&data.session&&await aplicarSesion(data.session))await entrarAlApp();
+    else if(data&&data.session)await SB.auth.signOut();
+  }catch(ex){}
+})();
 g('btn-refresh').onclick=()=>{loadBase().then(()=>renderCurrentTab());};
 
 // ===================== DATA LOADING =====================
@@ -2073,7 +2119,7 @@ async function renderUsuarios(){
       <div><h4 style="font-size:15px;color:var(--pd)">${u.nombre} ${u.activo===false?'<span class="badge b-gray">Inactivo</span>':'<span class="badge b-green">Activo</span>'}</h4>
       <p style="font-size:12px;color:var(--g600);margin-top:4px">Usuario: <strong>${u.usuario}</strong></p>
       <p style="font-size:12px;color:var(--g600)">Rol: <strong>${u.rol}</strong></p>
-      <p style="font-size:12px;color:var(--g600)">Clave: <strong>${u.clave}</strong></p>
+      <p style="font-size:12px;color:var(--g400)">Clave: cifrada, no visible</p>
       </div>
       <button class="btn-sm btn-p" id="btn-edit-selected">Editar</button>
     </div></div>`;
@@ -2085,10 +2131,8 @@ function openUserModal(user){
   let isNew=!user;
   let html=`
     <div class="field"><label>Nombre</label><input type="text" id="mu-nom" value="${user?(user.nombre||'').replace(/"/g,'&quot;'):''}"></div>
-    <div class="grid2">
-      <div class="field"><label>Usuario (login)</label><input type="text" id="mu-user" value="${user?(user.usuario||'').replace(/"/g,'&quot;'):''}"></div>
-      <div class="field"><label>Clave (PIN)</label><input type="text" id="mu-pass" value="${user?(user.clave||'').replace(/"/g,'&quot;'):''}" maxlength="6"></div>
-    </div>
+    <div class="field"><label>Usuario (login)</label><input type="text" id="mu-user" value="${user?(user.usuario||'').replace(/"/g,'&quot;'):''}"></div>
+    ${isNew?`<div class="alert alert-err" style="display:block;font-size:12px">La cuenta de acceso se crea aparte. Registra aqui los datos y pide al administrador del sistema que habilite el ingreso.</div>`:`<div class="subtle" style="font-size:12px;margin-bottom:8px">La clave la cambia cada persona desde "Mi clave". Por seguridad ya nadie puede verla ni fijarla desde aqui.</div>`}
     <div class="grid2">
       <div class="field"><label>Rol</label><select id="mu-rol">
         <option value="admin" ${user&&user.rol==='admin'?'selected':''}>Admin</option>
@@ -2111,23 +2155,55 @@ function openUserModal(user){
     let btn=g('btn-save-user');if(!lockBtn(btn))return;
     let nombre=g('mu-nom').value.trim();
     let usuario=g('mu-user').value.trim();
-    let clave=g('mu-pass').value.trim();
     let rol=g('mu-rol').value;
     let activo=g('mu-act').value==='true';
-    if(!nombre||!usuario||!clave){unlockBtn(btn);alert('Completa nombre, usuario y clave.');return;}
+    if(!nombre||!usuario){unlockBtn(btn);alert('Completa nombre y usuario.');return;}
     try{
       if(isNew){
         let id=uid('USR');
-        const{error}=await SB.from('empleados').insert({id,nombre,usuario,clave,rol,activo});
+        const{error}=await SB.from('empleados').insert({id,nombre,usuario,rol,activo});
         if(error)throw error;
       }else{
-        const{error}=await SB.from('empleados').update({nombre,usuario,clave,rol,activo}).eq('id',user.id);
+        const{error}=await SB.from('empleados').update({nombre,usuario,rol,activo}).eq('id',user.id);
         if(error)throw error;
       }
       closeModal();
       renderUsuarios();
     }catch(ex){
       alert('Error: '+(ex.message||ex.details||'No se pudo guardar'));
+    }finally{unlockBtn(btn);}
+  };
+}
+
+// ===================== MI CLAVE =====================
+// Cada usuario cambia su propia clave. Supabase lo permite con la sesion
+// activa; no hace falta ninguna llave privilegiada en el navegador.
+function abrirCambioClave(){
+  openModal('Cambiar mi clave',`
+    <div class="field"><label>Clave actual</label><input type="password" id="mc-old" maxlength="32" autocomplete="current-password"></div>
+    <div class="field"><label>Clave nueva</label><input type="password" id="mc-new" maxlength="32" autocomplete="new-password"></div>
+    <div class="field"><label>Repite la clave nueva</label><input type="password" id="mc-new2" maxlength="32" autocomplete="new-password"></div>
+    <div class="subtle" style="font-size:12px">Minimo 6 caracteres. Puedes usar letras y numeros, no solo digitos.</div>
+    <div id="mc-msg"></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-p" id="mc-save" style="flex:1">Guardar</button>
+      <button class="btn btn-gray" onclick="closeModal()" style="flex:1">Cancelar</button>
+    </div>`);
+  g('mc-save').onclick=async()=>{
+    let btn=g('mc-save');if(!lockBtn(btn))return;
+    let vieja=g('mc-old').value, nueva=g('mc-new').value, rep=g('mc-new2').value;
+    try{
+      if(nueva.length<6){showAlert('mc-msg','La clave nueva debe tener al menos 6 caracteres');return;}
+      if(nueva!==rep){showAlert('mc-msg','Las dos claves nuevas no coinciden');return;}
+      // Revalidar la clave actual antes de permitir el cambio.
+      const{error:eLog}=await SB.auth.signInWithPassword({email:usuarioAEmail(U.usuario),password:vieja});
+      if(eLog){showAlert('mc-msg','La clave actual no es correcta');return;}
+      const{error}=await SB.auth.updateUser({password:nueva});
+      if(error)throw error;
+      closeModal();
+      alert('Clave actualizada. Usala la proxima vez que entres.');
+    }catch(ex){
+      showAlert('mc-msg','No se pudo cambiar: '+(ex.message||'error'));
     }finally{unlockBtn(btn);}
   };
 }
@@ -2307,7 +2383,8 @@ function renderAyuda(){
       <h4 style="color:var(--pd);margin-bottom:8px">10. Usuarios (solo Admin)</h4>
       <ul style="font-size:13px;color:var(--g600);padding-left:18px;line-height:1.8">
         <li>Agrega, edita y desactiva usuarios del sistema</li>
-        <li>Puedes <strong>cambiar claves</strong> (PIN de 6 d\u00edgitos)</li>
+        <li>Las claves <strong>ya no se ven ni se fijan desde aqu\u00ed</strong>: est\u00e1n cifradas. Cada persona cambia la suya tocando su nombre en la barra superior</li>
+        <li>Para <strong>desactivar a alguien</strong>, cambia su Estado a Inactivo: pierde el acceso de inmediato, incluso si ya ten\u00eda la sesi\u00f3n abierta</li>
         <li>Roles disponibles: <strong>Admin</strong> (acceso total), <strong>Supervisor</strong> (todo menos usuarios), <strong>Vendedor</strong> (solo ventas)</li>
         <li>Los usuarios inactivos no pueden iniciar sesi\u00f3n</li>
       </ul>
