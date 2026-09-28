@@ -1530,6 +1530,26 @@ async function loadCaja(){
     else if(p.metodo==='Cheque')sal_ch+=parseNum(p.monto);
   });
 
+  // Movimientos del modulo Empleados. Esto debe coincidir exactamente con
+  // dailyMoves(): si los dos calculos se separan, el saldo mostrado deja de
+  // cuadrar con el arrastre y parece que un registro "no entro".
+  let rangeEmpPagos=allEmpPagos.filter(p=>p.fecha>=desde&&p.fecha<=hasta);
+  let empEnt=0,empSal=0;
+  rangeEmpPagos.forEach(p=>{
+    let monto=parseNum(p.monto),met=p.metodo;
+    if(p.tipo==='Abono_Prestamo'){
+      empEnt+=monto;
+      if(met==='Efectivo')ent_ef+=monto;
+      else if(met==='Transferencia')ent_tr+=monto;
+      else if(met==='Cheque')ent_ch+=monto;
+    }else{
+      empSal+=monto;
+      if(met==='Efectivo')sal_ef+=monto;
+      else if(met==='Transferencia')sal_tr+=monto;
+      else if(met==='Cheque')sal_ch+=monto;
+    }
+  });
+
   let totalEnt=round2(ent_ef+ent_tr+ent_ch);
   let totalSal=round2(sal_ef+sal_tr+sal_ch);
 
@@ -1563,7 +1583,15 @@ async function loadCaja(){
       <table class="dtable"><tr><th>Tipo</th><th>Efectivo</th><th>Transf.</th><th>Cheque</th></tr>
       <tr><td>Total</td><td>${fmt(sal_ef)}</td><td>${fmt(sal_tr)}</td><td>${fmt(sal_ch)}</td></tr>
       <tr style="font-weight:700"><td>TOTAL</td><td colspan="3" style="text-align:right">${fmt(totalSal)}</td></tr></table>
+      ${(empSal||empEnt)?`<div style="font-size:11px;color:var(--g600);margin-top:6px;line-height:1.6">
+        Incluye del módulo Empleados: ${empSal?`<strong>${fmt(empSal)}</strong> en pagos y préstamos`:''}${(empSal&&empEnt)?' · ':''}${empEnt?`<strong>${fmt(empEnt)}</strong> en abonos recibidos (van en Entradas)`:''}
+      </div>`:''}
     </div>
+    ${rangeEmpPagos.length?`<div class="card"><h4 style="font-size:13px;font-weight:700;margin-bottom:8px">Movimientos de empleados</h4>${
+      rangeEmpPagos.map(p=>{
+        let entra=p.tipo==='Abono_Prestamo';
+        return `<div class="litem"><div class="litem-info"><h4 style="color:${entra?'var(--green)':'var(--red)'}">${p.empleado_nombre||''} · ${p.tipo}</h4><p>${fmtDate(p.fecha)} · ${p.metodo}${p.observacion?' · '+p.observacion:''}</p></div><div class="litem-r"><div class="amt" style="color:${entra?'var(--green)':'var(--red)'}">${entra?'+':'−'}${fmt(p.monto)}</div></div></div>`;
+      }).join('')}</div>`:''}
     <div class="tbox" style="background:#D1FAE5"><span class="tbox-l" style="color:#065F46">Saldo final</span><span class="tbox-v" style="color:#065F46">${fmt(saldoFinal)}</span></div>
     <div class="card"><h4 style="font-size:13px;font-weight:700;margin-bottom:8px">Detalle entradas</h4>
       <table class="dtable"><tr><th>Tipo</th><th>Cliente/Ref</th><th>Monto</th></tr>
